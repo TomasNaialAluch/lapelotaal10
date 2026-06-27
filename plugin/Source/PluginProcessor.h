@@ -1,10 +1,12 @@
 #pragma once
 
+#include "DSP/BandSplitter.h"
 #include "DSP/Saturator.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 
-// V0 del saturador: un Saturator full-band con un parametro de Drive.
-// Ya no es passthrough puro -- ver docs/arquitectura-codigo.md, paso 2.
+// V2: multibanda real (2 bandas) -- el mismo Saturator de V1, instanciado
+// una vez por banda, con un BandSplitter Linkwitz-Riley separando la
+// senal. Ver docs/arquitectura-codigo.md, paso V2.
 class LaPelotaAl10AudioProcessor : public juce::AudioProcessor
 {
 public:
@@ -41,9 +43,17 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    std::atomic<float>* driveParam = nullptr;
-    juce::AudioParameterChoice* typeParam = nullptr;
-    std::array<Saturator, 2> saturators; // uno por canal, hasta 2 (estereo)
+    std::atomic<float>* crossoverParam = nullptr;
+    std::atomic<float>* lowDriveParam = nullptr;
+    std::atomic<float>* highDriveParam = nullptr;
+    juce::AudioParameterChoice* lowTypeParam = nullptr;
+    juce::AudioParameterChoice* highTypeParam = nullptr;
+
+    static constexpr int numChannelsHandled = 2; // estereo
+
+    std::array<LinkwitzRileyBandSplitter, numChannelsHandled> splitters;
+    std::array<Saturator, numChannelsHandled> lowSaturators;
+    std::array<Saturator, numChannelsHandled> highSaturators;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LaPelotaAl10AudioProcessor)
 };

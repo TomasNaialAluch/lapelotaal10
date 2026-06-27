@@ -6,17 +6,37 @@ juce::AudioProcessorValueTreeState::ParameterLayout LaPelotaAl10AudioProcessor::
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
     params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{"drive", 1},
-        "Drive",
+        juce::ParameterID{"crossover", 1},
+        "Crossover",
+        juce::NormalisableRange<float>(80.0f, 2000.0f, 1.0f, 0.4f), // skew: mas resolucion en graves
+        250.0f,
+        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"lowDrive", 1},
+        "Low Drive",
         juce::NormalisableRange<float>(0.0f, 24.0f, 0.01f),
         0.0f,
         juce::AudioParameterFloatAttributes().withLabel("dB")));
 
     params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"type", 1},
-        "Type",
+        juce::ParameterID{"lowType", 1},
+        "Low Type",
         juce::StringArray{"Warm", "Tube", "Diode", "Tape"},
         0));
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"highDrive", 1},
+        "High Drive",
+        juce::NormalisableRange<float>(0.0f, 24.0f, 0.01f),
+        0.0f,
+        juce::AudioParameterFloatAttributes().withLabel("dB")));
+
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"highType", 1},
+        "High Type",
+        juce::StringArray{"Warm", "Tube", "Diode", "Tape"},
+        3)); // default Tape, coherente con la tabla de bandas del README
 
     return {params.begin(), params.end()};
 }
@@ -27,15 +47,24 @@ LaPelotaAl10AudioProcessor::LaPelotaAl10AudioProcessor()
                           .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, nullptr, "PARAMETERS", createParameterLayout())
 {
-    driveParam = apvts.getRawParameterValue("drive");
-    typeParam = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter("type"));
+    crossoverParam = apvts.getRawParameterValue("crossover");
+    lowDriveParam = apvts.getRawParameterValue("lowDrive");
+    highDriveParam = apvts.getRawParameterValue("highDrive");
+    lowTypeParam = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter("lowType"));
+    highTypeParam = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter("highType"));
 }
 
 LaPelotaAl10AudioProcessor::~LaPelotaAl10AudioProcessor() = default;
 
 void LaPelotaAl10AudioProcessor::prepareToPlay(double sampleRate, int)
 {
-    for (auto& sat : saturators)
+    for (auto& splitter : splitters)
+        splitter.prepare(sampleRate);
+
+    for (auto& sat : lowSaturators)
+        sat.prepare(sampleRate);
+
+    for (auto& sat : highSaturators)
         sat.prepare(sampleRate);
 }
 
@@ -51,23 +80,40 @@ bool LaPelotaAl10AudioProcessor::isBusesLayoutSupported(const BusesLayout& layou
 
 void LaPelotaAl10AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    const float driveDb = driveParam != nullptr ? driveParam->load() : 0.0f;
-    const auto type = typeParam != nullptr
-                           ? static_cast<SaturationType>(typeParam->getIndex())
-                           : SaturationType::Warm;
+    const float crossoverHz = crossoverParam != nullptr ? crossoverParam->load() : 250.0f;
+    const float lowDriveDb = lowDriveParam != nullptr ? lowDriveParam->load() : 0.0f;
+    const float highDriveDb = highDriveParam != nullptr ? highDriveParam->load() : 0.0f;
+    const auto lowType = lowTypeParam != nullptr
+                              ? static_cast<SaturationType>(lowTypeParam->getIndex())
+                              : SaturationType::Warm;
+    const auto highType = highTypeParam != nullptr
+                               ? static_cast<SaturationType>(highTypeParam->getIndex())
+                               : SaturationType::Tape;
 
     const auto numChannels = buffer.getNumChannels();
     const auto numSamples = buffer.getNumSamples();
 
-    for (int channel = 0; channel < numChannels && channel < (int) saturators.size(); ++channel)
+    for (int channel = 0; channel < numChannels && channel < numChannelsHandled; ++channel)
     {
-        auto& sat = saturators[(size_t) channel];
-        sat.setDriveDb(driveDb);
-        sat.setType(type);
+        auto& splitter = splitters[(size_t) channel];
+        auto& lowSat = lowSaturators[(size_t) channel];
+        auto& highSat = highSaturators[(size_t) channel];
+
+        splitter.setCrossoverFrequency(crossoverHz);
+        lowSat.setDriveDb(lowDriveDb);
+        lowSat.setType(lowType);
+        highSat.setDriveDb(highDriveDb);
+        highSat.setType(highType);
 
         auto* data = buffer.getWritePointer(channel);
         for (int i = 0; i < numSamples; ++i)
-            data[i] = sat.processSample(data[i]);
+        {
+            float low = 0.0f;
+            float high = 0.0f;
+            splitter.processSample(data[i], low, high);
+
+            data[i] = lowSat.processSample(low) + highSat.processSample(high);
+        }
     }
 }
 

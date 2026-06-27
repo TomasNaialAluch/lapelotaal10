@@ -1,0 +1,12 @@
+build/
+out/
+_deps/
+.cache/
+*.obj
+*.exe
+*.vst3
+*.dll
+*.pdb
+.vs/
+CMakeFiles/
+CMakeCache.txt

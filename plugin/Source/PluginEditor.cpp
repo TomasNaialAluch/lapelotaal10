@@ -1,13 +1,22 @@
 #include "PluginEditor.h"
 
 LaPelotaAl10AudioProcessorEditor::LaPelotaAl10AudioProcessorEditor(LaPelotaAl10AudioProcessor& p)
-    : AudioProcessorEditor(&p), processorRef(p)
+    : AudioProcessorEditor(&p), processorRef(p),
+      driveAttachment(p.apvts, "drive", driveSlider)
 {
-    titleLabel.setText("La Pelota al 10 -- V0 (passthrough)", juce::NotificationType::dontSendNotification);
+    titleLabel.setText("La Pelota al 10 -- V0 (saturador full-band)", juce::NotificationType::dontSendNotification);
     titleLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(titleLabel);
 
-    setSize(400, 200);
+    driveSlider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    driveSlider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 80, 20);
+    addAndMakeVisible(driveSlider);
+
+    driveLabel.setText("Drive", juce::NotificationType::dontSendNotification);
+    driveLabel.setJustificationType(juce::Justification::centred);
+    addAndMakeVisible(driveLabel);
+
+    setSize(400, 280);
 }
 
 LaPelotaAl10AudioProcessorEditor::~LaPelotaAl10AudioProcessorEditor() = default;
@@ -19,5 +28,8 @@ void LaPelotaAl10AudioProcessorEditor::paint(juce::Graphics& g)
 
 void LaPelotaAl10AudioProcessorEditor::resized()
 {
-    titleLabel.setBounds(getLocalBounds());
+    auto area = getLocalBounds().reduced(10);
+    titleLabel.setBounds(area.removeFromTop(40));
+    driveSlider.setBounds(area.removeFromTop(150).reduced(60, 0));
+    driveLabel.setBounds(area.removeFromTop(20));
 }

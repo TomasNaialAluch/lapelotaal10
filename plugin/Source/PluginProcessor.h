@@ -1,14 +1,17 @@
 #pragma once
 
+#include "DSP/Saturator.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 
-// V0: passthrough puro. No procesa nada todavía -- solo valida que el
-// plugin compila, carga en un DAW y pasa audio sin tocarlo.
+// V0 del saturador: un Saturator full-band con un parametro de Drive.
+// Ya no es passthrough puro -- ver docs/arquitectura-codigo.md, paso 2.
 class LaPelotaAl10AudioProcessor : public juce::AudioProcessor
 {
 public:
     LaPelotaAl10AudioProcessor();
     ~LaPelotaAl10AudioProcessor() override;
+
+    juce::AudioProcessorValueTreeState apvts;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -36,5 +39,10 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
 private:
+    static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+    std::atomic<float>* driveParam = nullptr;
+    std::array<Saturator, 2> saturators; // uno por canal, hasta 2 (estereo)
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LaPelotaAl10AudioProcessor)
 };

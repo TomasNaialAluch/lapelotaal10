@@ -17,6 +17,9 @@ public:
 private:
     LaPelotaAl10AudioProcessor& processorRef;
     juce::Label titleLabel;
+    juce::Slider driveSlider;
+    juce::Label driveLabel;
+    juce::AudioProcessorValueTreeState::SliderAttachment driveAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LaPelotaAl10AudioProcessorEditor)
 };

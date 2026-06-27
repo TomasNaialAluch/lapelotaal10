@@ -1,19 +1,35 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+juce::AudioProcessorValueTreeState::ParameterLayout LaPelotaAl10AudioProcessor::createParameterLayout()
+{
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
+
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"drive", 1},
+        "Drive",
+        juce::NormalisableRange<float>(0.0f, 24.0f, 0.01f),
+        0.0f,
+        juce::AudioParameterFloatAttributes().withLabel("dB")));
+
+    return {params.begin(), params.end()};
+}
+
 LaPelotaAl10AudioProcessor::LaPelotaAl10AudioProcessor()
     : AudioProcessor(BusesProperties()
                           .withInput("Input", juce::AudioChannelSet::stereo(), true)
-                          .withOutput("Output", juce::AudioChannelSet::stereo(), true))
+                          .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts(*this, nullptr, "PARAMETERS", createParameterLayout())
 {
+    driveParam = apvts.getRawParameterValue("drive");
 }
 
 LaPelotaAl10AudioProcessor::~LaPelotaAl10AudioProcessor() = default;
 
-void LaPelotaAl10AudioProcessor::prepareToPlay(double, int)
+void LaPelotaAl10AudioProcessor::prepareToPlay(double sampleRate, int)
 {
-    // V0 no tiene estado que preparar -- se va a usar a partir de V1/V2
-    // (saturador, oversampling, etc.).
+    for (auto& sat : saturators)
+        sat.prepare(sampleRate);
 }
 
 void LaPelotaAl10AudioProcessor::releaseResources()
@@ -26,10 +42,22 @@ bool LaPelotaAl10AudioProcessor::isBusesLayoutSupported(const BusesLayout& layou
            && !layouts.getMainOutputChannelSet().isDisabled();
 }
 
-void LaPelotaAl10AudioProcessor::processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&)
+void LaPelotaAl10AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    // Passthrough deliberado: el buffer de entrada ya es el de salida,
-    // no se toca nada todavía.
+    const float driveDb = driveParam != nullptr ? driveParam->load() : 0.0f;
+
+    const auto numChannels = buffer.getNumChannels();
+    const auto numSamples = buffer.getNumSamples();
+
+    for (int channel = 0; channel < numChannels && channel < (int) saturators.size(); ++channel)
+    {
+        auto& sat = saturators[(size_t) channel];
+        sat.setDriveDb(driveDb);
+
+        auto* data = buffer.getWritePointer(channel);
+        for (int i = 0; i < numSamples; ++i)
+            data[i] = sat.processSample(data[i]);
+    }
 }
 
 juce::AudioProcessorEditor* LaPelotaAl10AudioProcessor::createEditor()
@@ -85,13 +113,17 @@ void LaPelotaAl10AudioProcessor::changeProgramName(int, const juce::String&)
 {
 }
 
-void LaPelotaAl10AudioProcessor::getStateInformation(juce::MemoryBlock&)
+void LaPelotaAl10AudioProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
-    // Sin parámetros todavía en V0.
+    auto state = apvts.copyState();
+    if (auto xml = state.createXml())
+        copyXmlToBinary(*xml, destData);
 }
 
-void LaPelotaAl10AudioProcessor::setStateInformation(const void*, int)
+void LaPelotaAl10AudioProcessor::setStateInformation(const void* data, int sizeInBytes)
 {
+    if (auto xml = getXmlFromBinary(data, sizeInBytes))
+        apvts.replaceState(juce::ValueTree::fromXml(*xml));
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

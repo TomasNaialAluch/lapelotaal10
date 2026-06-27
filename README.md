@@ -61,13 +61,15 @@ La idea es que cada banda tenga su propia curva de transferencia no lineal, no u
 
 Además del comportamiento automático de las 6 etapas, el plugin tiene **un control manual** sobre el saturador multibanda: una perilla de "Énfasis" que corre de izquierda a derecha.
 
-- **Tirada a la izquierda:** pone el énfasis en el low end. Ajusta la curva de EQ acompañando ese énfasis, va desactivando progresivamente los saturadores que trabajan en las frecuencias altas, y deja que el carácter "warm" (el saturador pensado originalmente solo para < 250 Hz) se extienda a todo el sonido, no solo a la banda baja.
-- **Tirada a la derecha:** comportamiento opuesto — énfasis en las frecuencias altas, los saturadores de baja frecuencia se van desactivando, y el carácter de las bandas altas (tape/diode) pasa a dominar el sonido completo.
-- **Al centro:** comportamiento por defecto, cada banda satura con su carácter propio tal como está definido en la tabla de arriba, sin que ninguna domine sobre las demás.
+- **Tirada a la izquierda:** pone el énfasis en el low end. Va desactivando progresivamente los saturadores que trabajan en las frecuencias altas, y deja que el carácter "warm" (el saturador pensado originalmente solo para < 250 Hz) se extienda a todo el sonido, no solo a la banda baja. **Además, mueve un poco la curva de EQ dándole más presencia a esa misma zona grave.**
+- **Tirada a la derecha:** comportamiento opuesto — los saturadores de baja frecuencia se van desactivando, el carácter de las bandas altas (tape/diode) pasa a dominar el sonido completo, **y la curva de EQ acompaña dándole más presencia a la zona aguda.**
+- **Al centro:** comportamiento por defecto, cada banda satura con su carácter propio tal como está definido en la tabla de arriba, sin que ninguna domine sobre las demás, y la curva de EQ no se inclina hacia ningún lado.
 
-El objetivo de esta perilla es que el mismo plugin sirva tanto para una línea de bajo (todo hacia la izquierda, énfasis grave/warm) como para un lead (posición intermedia) o un hi-hat/elemento de alta frecuencia (todo hacia la derecha, énfasis en agudos/tape-diode), sin tener que cambiar de plugin ni de preset según el tipo de fuente.
+El **por qué del ajuste de EQ acompañando**: si la perilla solo cambiara qué saturador domina pero no tocara la curva de frecuencia, el resultado podría sonar incoherente — un cambio de carácter armónico sin el realce de presencia que el oído espera que lo acompañe. Moviendo ambas cosas juntas (carácter de saturación + balance de EQ) en la misma dirección, el efecto se percibe más intencional y "completo": no es solo "ahora satura distinto", es "ahora el sonido vive en esa zona del espectro".
 
-Es, en la práctica, un **control de mezcla/morph entre las 4 bandas de saturación** (no un control independiente nuevo): redistribuye cuánto pesa cada banda y qué tan extendido está su carácter sobre el resto del espectro, en vez de operar como una etapa separada de la cadena.
+El objetivo de esta perilla es que el mismo plugin sirva tanto para una línea de bajo (todo hacia la izquierda, énfasis grave/warm + EQ con más presencia en graves) como para un lead (posición intermedia) o un hi-hat/elemento de alta frecuencia (todo hacia la derecha, énfasis en agudos/tape-diode + EQ con más presencia en agudos), sin tener que cambiar de plugin ni de preset según el tipo de fuente.
+
+Es, en la práctica, un **control de mezcla/morph entre las 4 bandas de saturación, combinado con un leve tilt de EQ en la misma dirección** (no un control independiente nuevo ni una etapa separada de la cadena): redistribuye cuánto pesa cada banda, qué tan extendido está su carácter sobre el resto del espectro, y a la vez inclina la curva tonal general para reforzar esa misma dirección.
 
 ### 2. EQ dinámico (estilo Bloom)
 
@@ -93,7 +95,35 @@ El plugin mide la señal de entrada y de salida (RMS o Peak, dependiendo del tip
 
 - **Formato:** VST3
 - **Plataformas:** Windows y macOS
-- **UI:** forma circular (no rectangular), a definir el mapeo de controles sobre esa forma.
+- **UI:** forma circular (no rectangular).
+
+## UI / Diseño visual — modelo de referencia
+
+Después de iterar varios bocetos, este es el **diseño de referencia adoptado** para el plugin (mockup generado como guía visual, no como asset final de producción):
+
+![La Pelota al 10 - mockup de referencia](docs/assets/ui/la-pelota-al-10-v1.png)
+
+**Estética:** panel circular vintage tipo hardware analógico de los 70s (referencia Moog), cuero oscuro texturizado en el borde exterior con costuras finas imitando los paneles de una pelota de fútbol clásica, metal cepillado, iluminación cálida ámbar. Nombre del plugin ("LA PELOTA AL 10") en español como marca; nombres de los controles en inglés. Detalle de una etiqueta de tela con los colores de la bandera argentina, cosida en el borde de cuero.
+
+### Disposición de controles
+
+| Posición | Control | Qué hace | Etapa de la cadena |
+|---|---|---|---|
+| Arriba, semicírculo superior, izquierda | **Medidor VU — INPUT** | Muestra el nivel de entrada en tiempo real (aguja + lectura digital en dB) | Monitoreo, no procesa |
+| Arriba, semicírculo superior, derecha | **Medidor VU — OUTPUT** | Muestra el nivel de salida en tiempo real, para comparar visualmente contra INPUT y confirmar que el matching de loudness está funcionando | Monitoreo del resultado de la etapa 6 |
+| **Centro, knob grande (control protagonista)** | **Énfasis** (sin etiqueta en el mockup, se identifica por tamaño/posición) | Perilla de izquierda a derecha: izquierda = domina el carácter "warm"/grave y desactiva progresivamente los saturadores de agudos + tilt de EQ hacia graves; derecha = domina el carácter tape/diode de agudos + tilt de EQ hacia agudos; centro = balance neutro entre las 4 bandas. Ver detalle completo en la sección del saturador multibanda. | Etapa 1 (control sobre el saturador multibanda) |
+| Izquierda arriba | **Drive** | Cantidad/ganancia de entrada al saturador | Etapa 1 |
+| Izquierda abajo | **Balance** | Intensidad de la etapa de EQ dinámico (cuánto balancea el espectro) | Etapa 2 (estilo Bloom) |
+| Derecha arriba | **Dynamics** | Intensidad del compresor multibanda automático | Etapa 3 (estilo Pro-MB) |
+| Derecha abajo | **Brightness** | Intensidad del auto-boost de la curva Hi-Fi | Etapa 4 |
+| Abajo, izquierda | **Smoothing** | Intensidad del control de resonancias | Etapa 5 (estilo Soothe2) |
+| Abajo, centro | **Mix** | Blend entre señal original (dry) y señal procesada (wet) | Control global |
+| Abajo, derecha | **Output** | Ganancia de salida manual, además del matching automático de loudness (etapa 6) | Control global |
+| Abajo, extremo derecho | **Bypass** | Switch on/off de todo el plugin, para comparar A/B | Control global |
+
+**Nota sobre la cantidad de controles:** son 9 en total (1 protagonista + 4 de intensidad por etapa automática + Drive/Mix/Output/Bypass), a propósito pocos — ninguna de las decisiones internas de cada etapa automática (bandas, thresholds, puntos de corte, curva objetivo Hi-Fi, métrica de loudness) se expone como control. El usuario ajusta intensidad, no parámetros técnicos.
+
+**Este modelo se usa como base para el desarrollo**: el roadmap de código (ver [docs/arquitectura-codigo.md](docs/arquitectura-codigo.md)) construye primero el procesamiento con una UI mínima de debug, y recién en el paso final adapta esta UI circular real — pero la lista de controles y su mapeo a cada etapa ya queda definida acá, no se vuelve a discutir desde cero en ese momento.
 
 ## Qué hay que investigar
 

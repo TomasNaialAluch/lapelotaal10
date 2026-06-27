@@ -58,3 +58,48 @@ private:
     double sampleRate = 44100.0;
     float frequencyHz = 250.0f;
 };
+
+// 4 bandas finales (ver tabla de saturacion del README): se construyen
+// encadenando 3 splits de 2 bandas, reusando LinkwitzRileyBandSplitter
+// sin modificarlo -- mismo patron de "agregar splitter alrededor, no
+// reescribir la pieza" que describe docs/arquitectura-codigo.md.
+class FourBandSplitter
+{
+public:
+    void prepare(double sampleRate)
+    {
+        splitAt250.prepare(sampleRate);
+        splitAt400.prepare(sampleRate);
+        splitAt2000.prepare(sampleRate);
+    }
+
+    void setCrossovers(float freq1, float freq2, float freq3)
+    {
+        splitAt250.setCrossoverFrequency(freq1);
+        splitAt400.setCrossoverFrequency(freq2);
+        splitAt2000.setCrossoverFrequency(freq3);
+    }
+
+    // band1: < freq1 ("Warm")      band2: freq1-freq2 ("Tube")
+    // band3: freq2-freq3 ("Diode") band4: > freq3 ("Tape")
+    void processSample(float input, float& band1, float& band2, float& band3, float& band4) noexcept
+    {
+        float low1, rest1;
+        splitAt250.processSample(input, low1, rest1);
+        band1 = low1;
+
+        float low2, rest2;
+        splitAt400.processSample(rest1, low2, rest2);
+        band2 = low2;
+
+        float low3, high3;
+        splitAt2000.processSample(rest2, low3, high3);
+        band3 = low3;
+        band4 = high3;
+    }
+
+private:
+    LinkwitzRileyBandSplitter splitAt250;
+    LinkwitzRileyBandSplitter splitAt400;
+    LinkwitzRileyBandSplitter splitAt2000;
+};

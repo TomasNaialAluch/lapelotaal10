@@ -4,9 +4,10 @@
 #include "DSP/Saturator.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 
-// V2: multibanda real (2 bandas) -- el mismo Saturator de V1, instanciado
-// una vez por banda, con un BandSplitter Linkwitz-Riley separando la
-// senal. Ver docs/arquitectura-codigo.md, paso V2.
+// 4 bandas finales -- el mismo Saturator de V1, instanciado una vez por
+// banda (x canal), con un FourBandSplitter Linkwitz-Riley separando la
+// senal en los cortes definidos en el README (250/400/2000 Hz).
+// Ver docs/arquitectura-codigo.md.
 class LaPelotaAl10AudioProcessor : public juce::AudioProcessor
 {
 public:
@@ -43,17 +44,15 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    std::atomic<float>* crossoverParam = nullptr;
-    std::atomic<float>* lowDriveParam = nullptr;
-    std::atomic<float>* highDriveParam = nullptr;
-    juce::AudioParameterChoice* lowTypeParam = nullptr;
-    juce::AudioParameterChoice* highTypeParam = nullptr;
-
+    static constexpr int numBands = 4;
     static constexpr int numChannelsHandled = 2; // estereo
 
-    std::array<LinkwitzRileyBandSplitter, numChannelsHandled> splitters;
-    std::array<Saturator, numChannelsHandled> lowSaturators;
-    std::array<Saturator, numChannelsHandled> highSaturators;
+    std::array<std::atomic<float>*, 3> crossoverParams{};       // 250/400/2000 Hz
+    std::array<std::atomic<float>*, numBands> driveParams{};    // por banda
+    std::array<juce::AudioParameterChoice*, numBands> typeParams{};
+
+    std::array<FourBandSplitter, numChannelsHandled> splitters;
+    std::array<std::array<Saturator, numBands>, numChannelsHandled> saturators;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LaPelotaAl10AudioProcessor)
 };

@@ -5,38 +5,46 @@ juce::AudioProcessorValueTreeState::ParameterLayout LaPelotaAl10AudioProcessor::
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
 
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{"crossover", 1},
-        "Crossover",
-        juce::NormalisableRange<float>(80.0f, 2000.0f, 1.0f, 0.4f), // skew: mas resolucion en graves
-        250.0f,
-        juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    // Cortes de banda, coincidiendo con la tabla del README.
+    struct CrossoverDef { const char* id; const char* name; float defaultHz; };
+    constexpr CrossoverDef crossoverDefs[] = {
+        {"crossover1", "Crossover 1", 250.0f},
+        {"crossover2", "Crossover 2", 400.0f},
+        {"crossover3", "Crossover 3", 2000.0f},
+    };
+    for (auto& def : crossoverDefs)
+    {
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{def.id, 1},
+            def.name,
+            juce::NormalisableRange<float>(40.0f, 18000.0f, 1.0f, 0.3f),
+            def.defaultHz,
+            juce::AudioParameterFloatAttributes().withLabel("Hz")));
+    }
 
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{"lowDrive", 1},
-        "Low Drive",
-        juce::NormalisableRange<float>(0.0f, 24.0f, 0.01f),
-        0.0f,
-        juce::AudioParameterFloatAttributes().withLabel("dB")));
+    // Bandas: < 250 (Warm), 250-400 (Tube), 400-2000 (Diode), > 2000 (Tape).
+    struct BandDef { const char* idPrefix; const char* namePrefix; int defaultType; };
+    constexpr BandDef bandDefs[] = {
+        {"band1", "Band 1 (Low)", 0},     // Warm
+        {"band2", "Band 2 (Low-Mid)", 1}, // Tube
+        {"band3", "Band 3 (High-Mid)", 2},// Diode
+        {"band4", "Band 4 (High)", 3},    // Tape
+    };
+    for (auto& def : bandDefs)
+    {
+        params.push_back(std::make_unique<juce::AudioParameterFloat>(
+            juce::ParameterID{juce::String(def.idPrefix) + "Drive", 1},
+            juce::String(def.namePrefix) + " Drive",
+            juce::NormalisableRange<float>(0.0f, 24.0f, 0.01f),
+            0.0f,
+            juce::AudioParameterFloatAttributes().withLabel("dB")));
 
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"lowType", 1},
-        "Low Type",
-        juce::StringArray{"Warm", "Tube", "Diode", "Tape"},
-        0));
-
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID{"highDrive", 1},
-        "High Drive",
-        juce::NormalisableRange<float>(0.0f, 24.0f, 0.01f),
-        0.0f,
-        juce::AudioParameterFloatAttributes().withLabel("dB")));
-
-    params.push_back(std::make_unique<juce::AudioParameterChoice>(
-        juce::ParameterID{"highType", 1},
-        "High Type",
-        juce::StringArray{"Warm", "Tube", "Diode", "Tape"},
-        3)); // default Tape, coherente con la tabla de bandas del README
+        params.push_back(std::make_unique<juce::AudioParameterChoice>(
+            juce::ParameterID{juce::String(def.idPrefix) + "Type", 1},
+            juce::String(def.namePrefix) + " Type",
+            juce::StringArray{"Warm", "Tube", "Diode", "Tape"},
+            def.defaultType));
+    }
 
     return {params.begin(), params.end()};
 }
@@ -47,11 +55,17 @@ LaPelotaAl10AudioProcessor::LaPelotaAl10AudioProcessor()
                           .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, nullptr, "PARAMETERS", createParameterLayout())
 {
-    crossoverParam = apvts.getRawParameterValue("crossover");
-    lowDriveParam = apvts.getRawParameterValue("lowDrive");
-    highDriveParam = apvts.getRawParameterValue("highDrive");
-    lowTypeParam = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter("lowType"));
-    highTypeParam = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter("highType"));
+    crossoverParams[0] = apvts.getRawParameterValue("crossover1");
+    crossoverParams[1] = apvts.getRawParameterValue("crossover2");
+    crossoverParams[2] = apvts.getRawParameterValue("crossover3");
+
+    const char* bandIds[numBands] = {"band1", "band2", "band3", "band4"};
+    for (int b = 0; b < numBands; ++b)
+    {
+        driveParams[(size_t) b] = apvts.getRawParameterValue(juce::String(bandIds[b]) + "Drive");
+        typeParams[(size_t) b] = dynamic_cast<juce::AudioParameterChoice*>(
+            apvts.getParameter(juce::String(bandIds[b]) + "Type"));
+    }
 }
 
 LaPelotaAl10AudioProcessor::~LaPelotaAl10AudioProcessor() = default;
@@ -61,11 +75,9 @@ void LaPelotaAl10AudioProcessor::prepareToPlay(double sampleRate, int)
     for (auto& splitter : splitters)
         splitter.prepare(sampleRate);
 
-    for (auto& sat : lowSaturators)
-        sat.prepare(sampleRate);
-
-    for (auto& sat : highSaturators)
-        sat.prepare(sampleRate);
+    for (auto& channelSaturators : saturators)
+        for (auto& sat : channelSaturators)
+            sat.prepare(sampleRate);
 }
 
 void LaPelotaAl10AudioProcessor::releaseResources()
@@ -80,15 +92,24 @@ bool LaPelotaAl10AudioProcessor::isBusesLayoutSupported(const BusesLayout& layou
 
 void LaPelotaAl10AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
-    const float crossoverHz = crossoverParam != nullptr ? crossoverParam->load() : 250.0f;
-    const float lowDriveDb = lowDriveParam != nullptr ? lowDriveParam->load() : 0.0f;
-    const float highDriveDb = highDriveParam != nullptr ? highDriveParam->load() : 0.0f;
-    const auto lowType = lowTypeParam != nullptr
-                              ? static_cast<SaturationType>(lowTypeParam->getIndex())
-                              : SaturationType::Warm;
-    const auto highType = highTypeParam != nullptr
-                               ? static_cast<SaturationType>(highTypeParam->getIndex())
-                               : SaturationType::Tape;
+    // Los 3 cortes deben quedar ordenados (crossover1 < crossover2 < crossover3)
+    // para que las 4 bandas tengan sentido -- se fuerza con jlimit por las dudas
+    // de que el usuario cruce los valores entre si desde la UI de debug.
+    float c1 = crossoverParams[0] != nullptr ? crossoverParams[0]->load() : 250.0f;
+    float c2 = crossoverParams[1] != nullptr ? crossoverParams[1]->load() : 400.0f;
+    float c3 = crossoverParams[2] != nullptr ? crossoverParams[2]->load() : 2000.0f;
+    c2 = juce::jmax(c2, c1 + 1.0f);
+    c3 = juce::jmax(c3, c2 + 1.0f);
+
+    std::array<float, numBands> driveDb{};
+    std::array<SaturationType, numBands> types{};
+    for (int b = 0; b < numBands; ++b)
+    {
+        driveDb[(size_t) b] = driveParams[(size_t) b] != nullptr ? driveParams[(size_t) b]->load() : 0.0f;
+        types[(size_t) b] = typeParams[(size_t) b] != nullptr
+                                 ? static_cast<SaturationType>(typeParams[(size_t) b]->getIndex())
+                                 : SaturationType::Warm;
+    }
 
     const auto numChannels = buffer.getNumChannels();
     const auto numSamples = buffer.getNumSamples();
@@ -96,23 +117,25 @@ void LaPelotaAl10AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     for (int channel = 0; channel < numChannels && channel < numChannelsHandled; ++channel)
     {
         auto& splitter = splitters[(size_t) channel];
-        auto& lowSat = lowSaturators[(size_t) channel];
-        auto& highSat = highSaturators[(size_t) channel];
+        auto& channelSaturators = saturators[(size_t) channel];
 
-        splitter.setCrossoverFrequency(crossoverHz);
-        lowSat.setDriveDb(lowDriveDb);
-        lowSat.setType(lowType);
-        highSat.setDriveDb(highDriveDb);
-        highSat.setType(highType);
+        splitter.setCrossovers(c1, c2, c3);
+        for (int b = 0; b < numBands; ++b)
+        {
+            channelSaturators[(size_t) b].setDriveDb(driveDb[(size_t) b]);
+            channelSaturators[(size_t) b].setType(types[(size_t) b]);
+        }
 
         auto* data = buffer.getWritePointer(channel);
         for (int i = 0; i < numSamples; ++i)
         {
-            float low = 0.0f;
-            float high = 0.0f;
-            splitter.processSample(data[i], low, high);
+            float band1 = 0.0f, band2 = 0.0f, band3 = 0.0f, band4 = 0.0f;
+            splitter.processSample(data[i], band1, band2, band3, band4);
 
-            data[i] = lowSat.processSample(low) + highSat.processSample(high);
+            data[i] = channelSaturators[0].processSample(band1)
+                    + channelSaturators[1].processSample(band2)
+                    + channelSaturators[2].processSample(band3)
+                    + channelSaturators[3].processSample(band4);
         }
     }
 }

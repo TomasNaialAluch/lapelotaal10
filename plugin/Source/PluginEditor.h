@@ -4,8 +4,8 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 // UI minima de debug. Todavia no es la UI circular final -- solo permite
-// validar de oido el splitter de 2 bandas (V2) antes de construir la UI
-// real (ultimo paso del roadmap, ver docs/arquitectura-codigo.md).
+// validar de oido las 4 bandas finales antes de construir la UI real
+// (ultimo paso del roadmap, ver docs/arquitectura-codigo.md).
 class LaPelotaAl10AudioProcessorEditor : public juce::AudioProcessorEditor
 {
 public:
@@ -16,27 +16,28 @@ public:
     void resized() override;
 
 private:
-    LaPelotaAl10AudioProcessor& processorRef;
+    struct BandControls
+    {
+        juce::Label sectionLabel;
+        juce::Slider driveSlider;
+        juce::Label driveLabel;
+        juce::ComboBox typeBox;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> driveAttachment;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> typeAttachment;
+    };
 
+    struct CrossoverControls
+    {
+        juce::Slider slider;
+        juce::Label label;
+        std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
+    };
+
+    LaPelotaAl10AudioProcessor& processorRef;
     juce::Label titleLabel;
 
-    juce::Slider crossoverSlider;
-    juce::Label crossoverLabel;
-    juce::AudioProcessorValueTreeState::SliderAttachment crossoverAttachment;
-
-    juce::Label lowSectionLabel;
-    juce::Slider lowDriveSlider;
-    juce::Label lowDriveLabel;
-    juce::AudioProcessorValueTreeState::SliderAttachment lowDriveAttachment;
-    juce::ComboBox lowTypeBox;
-    juce::AudioProcessorValueTreeState::ComboBoxAttachment lowTypeAttachment;
-
-    juce::Label highSectionLabel;
-    juce::Slider highDriveSlider;
-    juce::Label highDriveLabel;
-    juce::AudioProcessorValueTreeState::SliderAttachment highDriveAttachment;
-    juce::ComboBox highTypeBox;
-    juce::AudioProcessorValueTreeState::ComboBoxAttachment highTypeAttachment;
+    std::array<CrossoverControls, 3> crossovers;
+    std::array<BandControls, 4> bands;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LaPelotaAl10AudioProcessorEditor)
 };

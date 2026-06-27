@@ -12,6 +12,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout LaPelotaAl10AudioProcessor::
         0.0f,
         juce::AudioParameterFloatAttributes().withLabel("dB")));
 
+    params.push_back(std::make_unique<juce::AudioParameterChoice>(
+        juce::ParameterID{"type", 1},
+        "Type",
+        juce::StringArray{"Warm", "Tube", "Diode", "Tape"},
+        0));
+
     return {params.begin(), params.end()};
 }
 
@@ -22,6 +28,7 @@ LaPelotaAl10AudioProcessor::LaPelotaAl10AudioProcessor()
       apvts(*this, nullptr, "PARAMETERS", createParameterLayout())
 {
     driveParam = apvts.getRawParameterValue("drive");
+    typeParam = dynamic_cast<juce::AudioParameterChoice*>(apvts.getParameter("type"));
 }
 
 LaPelotaAl10AudioProcessor::~LaPelotaAl10AudioProcessor() = default;
@@ -45,6 +52,9 @@ bool LaPelotaAl10AudioProcessor::isBusesLayoutSupported(const BusesLayout& layou
 void LaPelotaAl10AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     const float driveDb = driveParam != nullptr ? driveParam->load() : 0.0f;
+    const auto type = typeParam != nullptr
+                           ? static_cast<SaturationType>(typeParam->getIndex())
+                           : SaturationType::Warm;
 
     const auto numChannels = buffer.getNumChannels();
     const auto numSamples = buffer.getNumSamples();
@@ -53,6 +63,7 @@ void LaPelotaAl10AudioProcessor::processBlock(juce::AudioBuffer<float>& buffer, 
     {
         auto& sat = saturators[(size_t) channel];
         sat.setDriveDb(driveDb);
+        sat.setType(type);
 
         auto* data = buffer.getWritePointer(channel);
         for (int i = 0; i < numSamples; ++i)

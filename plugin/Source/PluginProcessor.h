@@ -42,6 +42,7 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     std::atomic<float>* driveParam = nullptr;
+    juce::AudioParameterChoice* typeParam = nullptr;
     std::array<Saturator, 2> saturators; // uno por canal, hasta 2 (estereo)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LaPelotaAl10AudioProcessor)

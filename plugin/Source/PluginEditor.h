@@ -21,5 +21,9 @@ private:
     juce::Label driveLabel;
     juce::AudioProcessorValueTreeState::SliderAttachment driveAttachment;
 
+    juce::ComboBox typeBox;
+    juce::Label typeLabel;
+    juce::AudioProcessorValueTreeState::ComboBoxAttachment typeAttachment;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(LaPelotaAl10AudioProcessorEditor)
 };
